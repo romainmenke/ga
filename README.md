@@ -1,3 +1,6 @@
+[![Go Report Card](https://goreportcard.com/badge/github.com/romainmenke/ga)](https://goreportcard.com/report/github.com/romainmenke/ga)
+[![GoDoc](https://godoc.org/github.com/romainmenke/ga?status.svg)](https://godoc.org/github.com/romainmenke/ga)
+
 # GA
 
 Report events to google analytics with the [Measurement Protocol](https://developers.google.com/analytics/devguides/collection/protocol/v1/).

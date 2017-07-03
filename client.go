@@ -30,7 +30,7 @@ type Client struct {
 	TID string
 
 	doneChan     chan struct{}
-	errHandler   ErrHandler // useful for logging errors occuring on ga go routines
+	errHandler   ErrHandler // useful for logging errors occurring on ga go routines
 	eventChan    chan *Event
 	eventCounter int32 // accessed atomically
 	events       Events
@@ -96,7 +96,7 @@ func (c *Client) sending() bool {
 }
 
 // Start makes the Client receive Events and submit them to GA.
-// This call will block untill Client.Shutdown is called.
+// This call will block until Client.Shutdown is called.
 func (c *Client) Start() error {
 	if atomic.LoadInt32(&c.started) > 0 {
 		return ErrAlreadyStarted
@@ -170,7 +170,7 @@ func (c *Client) Start() error {
 }
 
 // Report is used to submit an Event to GA.
-// This can be safely called by multipe go routines.
+// This can be safely called by multiple go routines.
 func (c *Client) Report(e *Event) error {
 	select {
 	case <-c.getDoneChan():

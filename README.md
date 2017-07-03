@@ -1,3 +1,4 @@
+[![Build Status](https://travis-ci.org/romainmenke/ga.svg?branch=master)](https://travis-ci.org/romainmenke/ga)
 [![Go Report Card](https://goreportcard.com/badge/github.com/romainmenke/ga)](https://goreportcard.com/report/github.com/romainmenke/ga)
 [![GoDoc](https://godoc.org/github.com/romainmenke/ga?status.svg)](https://godoc.org/github.com/romainmenke/ga)
 

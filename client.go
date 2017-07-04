@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -261,19 +262,23 @@ func (c *Client) sendBatch(ctx context.Context, events Events) (int32, error) {
 	}
 
 	resp, err := c.HTTP.Do(req)
+	if err != nil && strings.Contains(err.Error(), "net/http: request canceled") || err != nil && strings.Contains(err.Error(), "net/http: timeout") {
+		return 0, err
+	}
 	if err != nil {
 		c.errHandler.Err(events, err)
 		return int32(len(events)), nil // can't recover this
 	}
+
 	if resp.StatusCode != 200 {
 		defer resp.Body.Close()
 		b, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			err = errors.Wrap(ErrGoogleAnalytics, err.Error())
+			err = errors.Wrap(err, ErrGoogleAnalytics.Error())
 			c.errHandler.Err(events, err)
 			return int32(len(events)), nil // can't recover this
 		}
-		err = errors.Wrap(ErrGoogleAnalytics, fmt.Sprintf("%d %s", resp.StatusCode, b))
+		err = errors.Wrap(fmt.Errorf("code: %d message: %s", resp.StatusCode, strings.TrimSuffix(string(b), "\n")), ErrGoogleAnalytics.Error())
 		c.errHandler.Err(events, err)
 		return int32(len(events)), nil // can't recover this
 	}

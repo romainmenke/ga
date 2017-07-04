@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/romainmenke/ga"
 )
 
@@ -108,9 +109,19 @@ func ExampleClient_HandleErr() {
 	c := &ga.Client{}
 
 	// determine what happens with errors.
-	c.HandleErr(ga.ErrHandlerFunc(func(e ga.Events, err error) {
+	c.HandleErr(ga.ErrHandlerFunc(func(events ga.Events, err error) {
+		// you can log the error
 		fmt.Println(err)
+
+		// some errs might be Wrapped
+		fmt.Println(errors.Cause(err))
+
 		// you could re-report the events here if you consider the error a temporary glitch.
+		if err.Error() == "just a flesh wound" {
+			for _, e := range events {
+				c.Report(e)
+			}
+		}
 	}))
 
 	go func() {

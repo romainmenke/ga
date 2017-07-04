@@ -255,13 +255,7 @@ func (c *Client) sendBatch(ctx context.Context, events Events) (int32, error) {
 		return int32(len(events)), nil // can't recover this
 	}
 
-	req, err := http.NewRequest("POST", c.urlStr, buf)
-	if err != nil {
-		c.errHandler.Err(events, err)
-		return int32(len(events)), nil // can't recover this
-	}
-
-	resp, err := c.HTTP.Do(req)
+	resp, err := c.HTTP.Post(c.urlStr, "application/x-www-form-urlencoded", buf)
 	if err != nil && strings.Contains(err.Error(), "net/http: request canceled") || err != nil && strings.Contains(err.Error(), "net/http: timeout") {
 		return 0, err
 	}

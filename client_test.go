@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 )
@@ -137,9 +138,12 @@ func Test_Zero_Client_Sometimes_Slow_API(t *testing.T) {
 	var receivedReq bool
 
 	var fast bool
+	var fastMu sync.Mutex
 
 	ts := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			fastMu.Lock()
+			defer fastMu.Unlock()
 			if !fast {
 				time.Sleep(time.Millisecond * 400)
 				fast = true

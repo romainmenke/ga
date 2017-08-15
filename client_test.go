@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"sync"
 	"testing"
 	"time"
@@ -35,7 +36,7 @@ func Test_Zero_Client_Start_Stop(t *testing.T) {
 
 	for i := 0; i < 30; i++ {
 		time.Sleep(time.Millisecond * 5)
-		err := c.Report(&Event{
+		err := c.Report(Event{
 			"foo": fmt.Sprintf("%d", i),
 		})
 		if err != nil {
@@ -48,7 +49,7 @@ func Test_Zero_Client_Start_Stop(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = c.Report(&Event{
+	err = c.Report(Event{
 		"foo": fmt.Sprintf("%d", 999),
 	})
 	if err != ErrClientClosed {
@@ -77,7 +78,7 @@ func Test_Zero_Client_Bad_API(t *testing.T) {
 
 	c.urlStr = ts.URL
 
-	c.HandleErr(ErrHandlerFunc(func(e Events, err error) {
+	c.HandleErr(ErrHandlerFunc(func(e []Event, err error) {
 		if err != nil {
 			errChan <- err
 		}
@@ -95,7 +96,7 @@ func Test_Zero_Client_Bad_API(t *testing.T) {
 
 	time.Sleep(time.Millisecond * 10)
 
-	err := c.Report(&Event{
+	err := c.Report(Event{
 		"foo": "baz",
 	})
 	if err != nil {
@@ -130,6 +131,8 @@ RESULT_LOOP:
 
 }
 
+// One report, gives timeout on first try
+// Succeeds on second try
 func Test_Zero_Client_Sometimes_Slow_API(t *testing.T) {
 
 	errChan := make(chan error, 1)
@@ -140,14 +143,31 @@ func Test_Zero_Client_Sometimes_Slow_API(t *testing.T) {
 	var fast bool
 	var fastMu sync.Mutex
 
+	c := &Client{
+		BatchWait:   time.Millisecond * 500,
+		SendTimeout: time.Second * 10,
+		HTTP: &http.Client{
+			Timeout: time.Millisecond * 50,
+			Transport: &http.Transport{
+				Dial: (&net.Dialer{
+					Timeout: time.Millisecond * 50,
+				}).Dial,
+				TLSHandshakeTimeout:   time.Millisecond * 100,
+				ResponseHeaderTimeout: time.Millisecond * 50,
+				IdleConnTimeout:       time.Millisecond * 5,
+			},
+		},
+	}
+
 	ts := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			fastMu.Lock()
 			defer fastMu.Unlock()
+
 			if !fast {
-				time.Sleep(time.Millisecond * 400)
+				time.Sleep(time.Millisecond * 250)
 				fast = true
-				w.WriteHeader(200)
+				w.WriteHeader(500)
 				return
 			}
 
@@ -158,6 +178,7 @@ func Test_Zero_Client_Sometimes_Slow_API(t *testing.T) {
 			if err == nil {
 				errChan <- errors.New("no error")
 			}
+
 			reqChan <- string(b)
 
 			w.WriteHeader(200)
@@ -165,29 +186,15 @@ func Test_Zero_Client_Sometimes_Slow_API(t *testing.T) {
 	)
 	defer ts.Close()
 
-	c := &Client{
-		BatchWait:   time.Millisecond * 100,
-		SendTimeout: time.Second * 10,
-		HTTP: &http.Client{
-			Timeout: time.Millisecond * 100,
-			Transport: &http.Transport{
-				Dial: (&net.Dialer{
-					Timeout: time.Millisecond * 100,
-				}).Dial,
-				TLSHandshakeTimeout:   time.Millisecond * 100,
-				ResponseHeaderTimeout: time.Millisecond * 100,
-				IdleConnTimeout:       time.Millisecond * 100,
-			},
-		},
-	}
-
 	c.urlStr = ts.URL
 
-	c.HandleErr(ErrHandlerFunc(func(e Events, err error) {
+	c.HandleErr(ErrHandlerFunc(func(e []Event, err error) {
 		if err != nil {
+			t.Log("sending err", err)
 			errChan <- err
 		}
 		if err == nil {
+			t.Log("sending non err")
 			errChan <- errors.New("no error")
 		}
 	}))
@@ -199,27 +206,28 @@ func Test_Zero_Client_Sometimes_Slow_API(t *testing.T) {
 		}
 	}()
 
-	time.Sleep(time.Millisecond * 10)
+	go func() {
+		time.Sleep(time.Millisecond * 10)
+		err := c.Report(Event{
+			"foo": "baz",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
 
-	err := c.Report(&Event{
-		"foo": "baz",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
 	defer cancel()
 
 RESULT_LOOP:
 	for {
 		select {
 		case req := <-reqChan:
-			if req != "foo=baz" {
+			if match, _ := regexp.MatchString("foo=baz&qt=\\d*", req); !match {
 				t.Fatal(req)
 			}
 			receivedReq = true
-		case err = <-errChan:
+		case err := <-errChan:
 			if err != nil && err.Error() != "no error" {
 				t.Fatal("unexpected err", err)
 				receivedErr = true
@@ -235,12 +243,10 @@ RESULT_LOOP:
 		}
 	}
 
-	err = c.Shutdown(context.Background())
+	err := c.Shutdown(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	time.Sleep(time.Millisecond * 100)
 
 }
 
@@ -281,7 +287,7 @@ func Test_Zero_Client_Report(t *testing.T) {
 
 	time.Sleep(time.Millisecond * 10)
 
-	err := c.Report(&Event{
+	err := c.Report(Event{
 		"foo":   "baz",
 		"alpha": "beta",
 	})
@@ -289,7 +295,7 @@ func Test_Zero_Client_Report(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = c.Report(&Event{
+	err = c.Report(Event{
 		"fooz":  "&azz",
 		"delta": "$amma",
 	})
@@ -304,7 +310,7 @@ RESULT_LOOP:
 	for {
 		select {
 		case req := <-reqChan:
-			if req != "alpha=beta&foo=baz\ndelta=%24amma&fooz=%26azz" {
+			if match, _ := regexp.MatchString("alpha=beta&foo=baz&qt=\\d*\\ndelta=%24amma&fooz=%26azz&qt=\\d*", req); !match {
 				t.Fatal(req)
 			}
 			receivedReq = true
@@ -370,7 +376,7 @@ func Test_Zero_Client_Done_Send(t *testing.T) {
 
 	time.Sleep(time.Millisecond * 10)
 
-	err := c.Report(&Event{
+	err := c.Report(Event{
 		"foo":   "baz",
 		"alpha": "beta",
 	})

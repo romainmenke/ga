@@ -4,6 +4,7 @@ import (
 	"io"
 	"net/url"
 	"sort"
+	"time"
 )
 
 // Event represents a single Google Analytics event.
@@ -75,12 +76,23 @@ func (e Event) WriteTo(w io.Writer) (int64, error) {
 	return sumN, err
 }
 
-// Events is a collection of Event instances.
-// It is used to batch report Events.
-type Events []*Event
+type event struct {
+	reportedAt time.Time
+	e          Event
+}
+
+type events []event
+
+func (l events) cleanEvents() []Event {
+	x := make([]Event, len(l), len(l))
+	for _, e := range l {
+		x = append(x, e.e)
+	}
+	return x
+}
 
 // WriteTo formats a batch of Events and writes them to w.
-func (l Events) WriteTo(w io.Writer) (int64, error) {
+func (l events) WriteTo(w io.Writer) (int64, error) {
 	ws, ok := w.(writeStringer)
 	if !ok {
 		ws = stringWriter{w}
@@ -93,7 +105,7 @@ func (l Events) WriteTo(w io.Writer) (int64, error) {
 	)
 
 	for _, e := range l {
-		if len(*e) == 0 {
+		if len(e.e) == 0 {
 			continue
 		}
 		if firstWritten {
@@ -106,7 +118,7 @@ func (l Events) WriteTo(w io.Writer) (int64, error) {
 		}
 
 		var n int64
-		n, err = e.WriteTo(ws)
+		n, err = e.e.WriteTo(ws)
 		sumN += n
 		if err != nil {
 			return sumN, err

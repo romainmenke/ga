@@ -11,7 +11,7 @@ import (
 func (c *Client) DefaultHTTPHandler(h http.Handler) http.Handler {
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		e := &Event{
+		e := Event{
 			"tid": c.TID,
 			"cid": uuid.New(),
 			"t":   "pageview",

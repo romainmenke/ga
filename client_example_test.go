@@ -25,11 +25,11 @@ func ExampleClient() {
 
 	time.Sleep(time.Millisecond * 5)
 
-	c.Report(&ga.Event{
+	c.Report(ga.Event{
 		"foo": "baz",
 	})
 
-	e := &ga.Event{}
+	e := ga.Event{}
 	e.Set("t", "pageview")
 	c.Report(e)
 
@@ -61,7 +61,7 @@ func ExampleClient_HTTP() {
 
 	time.Sleep(time.Millisecond * 5)
 
-	c.Report(&ga.Event{
+	c.Report(ga.Event{
 		"foo": "baz",
 	})
 
@@ -93,7 +93,7 @@ func ExampleClient_SendTimeout() {
 
 	time.Sleep(time.Millisecond * 5)
 
-	c.Report(&ga.Event{
+	c.Report(ga.Event{
 		"foo": "baz",
 	})
 
@@ -109,7 +109,7 @@ func ExampleClient_HandleErr() {
 	c := &ga.Client{}
 
 	// determine what happens with errors.
-	c.HandleErr(ga.ErrHandlerFunc(func(events ga.Events, err error) {
+	c.HandleErr(ga.ErrHandlerFunc(func(events []ga.Event, err error) {
 		// you can log the error
 		fmt.Println(err)
 
@@ -134,7 +134,7 @@ func ExampleClient_HandleErr() {
 
 	time.Sleep(time.Millisecond * 5)
 
-	c.Report(&ga.Event{
+	c.Report(ga.Event{
 		"foo": "baz",
 	})
 
@@ -169,7 +169,7 @@ func ExampleClient_DefaultHTTPHandler() {
 
 	time.Sleep(time.Millisecond * 5)
 
-	c.Report(&ga.Event{
+	c.Report(ga.Event{
 		"foo": "baz",
 	})
 

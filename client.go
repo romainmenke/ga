@@ -32,9 +32,9 @@ type Client struct {
 
 	doneChan     chan struct{}
 	errHandler   ErrHandler // useful for logging errors occurring on ga go routines
-	eventChan    chan *Event
+	eventChan    chan event
 	eventCounter int32 // accessed atomically
-	events       Events
+	events       events
 	inShutdown   int32 // accessed atomically (non-zero means we're in Shutdown).
 	mu           sync.Mutex
 	started      int32  // accessed atomically (non-zero means we've Started).
@@ -106,9 +106,9 @@ func (c *Client) Start() error {
 	atomic.AddInt32(&c.started, 1)
 	defer atomic.AddInt32(&c.started, -1)
 
-	c.events = make([]*Event, 0, 256)
+	c.events = make([]event, 0, 256)
 
-	c.eventChan = make(chan *Event)
+	c.eventChan = make(chan event)
 
 	if c.HTTP == nil {
 		c.HTTP = http.DefaultClient
@@ -131,7 +131,7 @@ func (c *Client) Start() error {
 	}
 
 	if c.errHandler == nil {
-		c.HandleErr(ErrHandlerFunc(func(e Events, err error) {}))
+		c.HandleErr(ErrHandlerFunc(func(e []Event, err error) {}))
 	}
 
 	ticker := time.NewTicker(c.BatchWait)
@@ -140,13 +140,10 @@ func (c *Client) Start() error {
 	for {
 		select {
 		case e := <-c.eventChan:
-			if e == nil {
-				continue
-			}
 
 			atomic.AddInt32(&c.eventCounter, 1)
-
 			c.events = append(c.events, e)
+
 			if len(c.events) >= 20 {
 				n, _ := c.send(c.events)
 				c.events = c.events[:len(c.events)-int(n)]
@@ -172,14 +169,19 @@ func (c *Client) Start() error {
 
 // Report is used to submit an Event to GA.
 // This can be safely called by multiple go routines.
-func (c *Client) Report(e *Event) error {
+func (c *Client) Report(e Event) error {
 	select {
 	case <-c.getDoneChan():
 		return ErrClientClosed
 	default:
 	}
 
-	c.eventChan <- e
+	x := event{
+		reportedAt: time.Now(),
+		e:          e,
+	}
+
+	c.eventChan <- x
 	return nil
 }
 
@@ -187,16 +189,16 @@ func (c *Client) Report(e *Event) error {
 type ErrHandler interface {
 	// Err receives the Events that erred and the corresponding error.
 	// This is useful for logging and retry submitting Events.
-	Err(Events, error)
+	Err([]Event, error)
 }
 
 // The ErrHandlerFunc type is an adapter to allow the use of ordinary functions as ErrHandlers.
 // If f is a function with the appropriate signature, ErrHandlerFunc(f) is a ErrHandler that calls f.
-type ErrHandlerFunc func(e Events, err error)
+type ErrHandlerFunc func(e []Event, err error)
 
 // Err receives the Events that erred and the corresponding error.
 // This is useful for logging and retry submitting Events.
-func (f ErrHandlerFunc) Err(e Events, err error) {
+func (f ErrHandlerFunc) Err(e []Event, err error) {
 	f(e, err)
 }
 
@@ -213,7 +215,7 @@ func (c *Client) HandleErr(h ErrHandler) {
 	c.errHandler = h
 }
 
-func (c *Client) send(events Events) (int32, error) {
+func (c *Client) send(events events) (int32, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.SendTimeout)
 	defer cancel()
 
@@ -240,7 +242,7 @@ func (c *Client) send(events Events) (int32, error) {
 	return sumN, nil
 }
 
-func (c *Client) sendBatch(ctx context.Context, events Events) (int32, error) {
+func (c *Client) sendBatch(ctx context.Context, events events) (int32, error) {
 	select {
 	case <-ctx.Done():
 		return 0, ctx.Err()
@@ -248,10 +250,21 @@ func (c *Client) sendBatch(ctx context.Context, events Events) (int32, error) {
 		// execute
 	}
 
+	for _, e := range events {
+		if e.reportedAt.IsZero() {
+			continue
+		}
+
+		qt := fmt.Sprint(time.Since(e.reportedAt).Nanoseconds() / 1e6)
+		if qt != "0" {
+			e.e.Set("qt", qt)
+		}
+	}
+
 	buf := bytes.NewBuffer(nil)
 	_, err := events.WriteTo(buf)
 	if err != nil {
-		c.errHandler.Err(events, err)
+		c.errHandler.Err(events.cleanEvents(), err)
 		return int32(len(events)), nil // can't recover this
 	}
 
@@ -260,7 +273,7 @@ func (c *Client) sendBatch(ctx context.Context, events Events) (int32, error) {
 		return 0, err
 	}
 	if err != nil {
-		c.errHandler.Err(events, err)
+		c.errHandler.Err(events.cleanEvents(), err)
 		return int32(len(events)), nil // can't recover this
 	}
 
@@ -269,11 +282,11 @@ func (c *Client) sendBatch(ctx context.Context, events Events) (int32, error) {
 		b, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			err = errors.Wrap(err, ErrGoogleAnalytics.Error())
-			c.errHandler.Err(events, err)
+			c.errHandler.Err(events.cleanEvents(), err)
 			return int32(len(events)), nil // can't recover this
 		}
 		err = errors.Wrap(fmt.Errorf("code: %d message: %s", resp.StatusCode, strings.TrimSuffix(string(b), "\n")), ErrGoogleAnalytics.Error())
-		c.errHandler.Err(events, err)
+		c.errHandler.Err(events.cleanEvents(), err)
 		return int32(len(events)), nil // can't recover this
 	}
 

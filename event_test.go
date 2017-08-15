@@ -3,6 +3,7 @@ package ga
 import (
 	"bytes"
 	"testing"
+	"time"
 )
 
 func Test_Event_WriteTo(t *testing.T) {
@@ -41,20 +42,20 @@ func Test_Events_WriteTo_WithEscaping(t *testing.T) {
 
 	empty := Event{}
 
-	a := &Event{}
+	a := Event{}
 	a.Set("alpha", "@lpha")
 	a.Set("beta", "&eta")
 	a.Set("delta", "")
 
-	b := &Event{}
+	b := Event{}
 	b.Set("one", "*ne")
 	b.Set("two", "!wo")
 
-	l := Events{
-		&empty,
-		a,
-		&empty,
-		b,
+	l := events{
+		event{reportedAt: time.Now(), e: empty},
+		event{reportedAt: time.Now(), e: a},
+		event{reportedAt: time.Now(), e: empty},
+		event{reportedAt: time.Now(), e: b},
 	}
 
 	buf := bytes.NewBuffer(nil)

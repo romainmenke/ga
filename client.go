@@ -78,12 +78,13 @@ func (c *Client) Shutdown(ctx context.Context) error {
 
 	c.mu.Lock()
 	c.closeDoneChanLocked()
-	c.closeEventChanLocked()
 	c.mu.Unlock()
 
 	for c.sending() {
 		time.Sleep(c.HTTP.Timeout)
 	}
+
+	c.closeEventChanLocked()
 
 	return nil
 }
